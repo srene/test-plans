@@ -1,25 +1,39 @@
-## The manifest file describes a test plan to Testground.
-## Amongst other things, it indicates the name of the test plan, the supported builders and runners, and configurations for those.
-## It describes the test cases, specifying the number of instances and test parameters each supports.
 name = "ping"
+[defaults]
+builder = "exec:go"
+runner = "local:exec"
 
-[builders]
-"docker:go" = { enabled = true, enable_go_build_cache = true }
-"exec:go"   = { enabled = true }
+[builders."docker:go"]
+enabled = true
+go_version = "1.18"
+#module_path = "github.com/your/module/name"
+#exec_pkg = "."
 
-[runners]
-"local:docker"  = { enabled = true }
-"local:exec"    = { enabled = true }
-"cluster:k8s"   = { enabled = true }
+[builders."exec:go"]
+enabled = true
+#module_path = "github.com/your/module/name"
 
-[global.build_config]
-  enable_go_build_cache = true
+[runners."local:docker"]
+enabled = true
+
+[runners."local:exec"]
+enabled = true
+
+[runners."cluster:k8s"]
+enabled = true
 
 [[testcases]]
-name = "ping"
-instances = { min = 2, max = 10000, default = 5 }
+name= "ping"
+instances = { min = 1, max = 5, default = 1 }
 
   [testcases.params]
-  secure_channel    = { type = "enum", desc = "secure channel used", values = ["noise", "tls"], default = "noise" }
-  max_latency_ms    = { type = "int", desc = "maximum value for random local link latency", unit = "ms", default = 1000 }
+#  secure_channel    = { type = "enum", desc = "secure channel used", values = ["noise", "tls"], default = "noise" }
+  max_latency_ms    = { type = "int", desc = "maximum value for random local link latency", unit = "ms", default = 100 }
   iterations        = { type = "int", desc = "number of ping iterations we'll run against each peer", unit = "count", default = 5 }
+
+# Add more testcases here...
+# [[testcases]]
+# name = "another"
+# instances = { min = 1, max = 1, default = 1 }
+#   [testcase.params]
+#   param1 = { type = "int", desc = "an integer", unit = "units", default = 3 }

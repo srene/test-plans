@@ -1,145 +1,63 @@
 package main
 
 import (
-	"context"
+//	"errors"
 	"fmt"
-	"math/rand"
 	"time"
+        "context"
+	"math/rand"
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-
-	"github.com/libp2p/go-libp2p-core/peer"
-
-	"github.com/libp2p/go-libp2p-noise"
-	tls "github.com/libp2p/go-libp2p-tls"
-
-	"github.com/testground/sdk-go/network"
 	"github.com/testground/sdk-go/run"
 	"github.com/testground/sdk-go/runtime"
 	"github.com/testground/sdk-go/sync"
+        "github.com/testground/sdk-go/network"
+
+	"github.com/libp2p/go-libp2p"
+//	"github.com/libp2p/go-libp2p-core/host"
+//	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-noise"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
+
 )
 
-var testcases = map[string]interface{}{
-	"ping": run.InitializedTestCaseFn(runPing), // we don't need the type conversion, but it's here for instructional purposes.
-}
-
-// A test plan is just a standard Go program which receives a bunch of
-// environment variables to configure itself. A test plan ONLY depends on the
-// lightweight Testground SDK (https://github.com/testground/sdk-go/).
-//
-// A central object is the RunEnv (runtime environment), which encapsulates the
-// contract between Testground and this test plan. Read more: https://docs.testground.ai/concepts-and-architecture/runtime.
-//
-// Other key objects are:
-//
-//  * sync.Client (https://pkg.go.dev/github.com/testground/sdk-go/sync):
-//    used to coordinate instances with one another via synchronisations
-//    primitives like signals, barriers, pubsub. In the future, we plan to
-//    support more sophisticated patterns like locks, semaphores, etc.
-//  * network.Client (https://pkg.go.dev/github.com/testground/sdk-go/network):
-//    used to manipulate network configurations. The network.Client uses the
-//    sync service to communicate with the sidecar containers that manage
-//    the network configurations "from the outside". In other words, network
-//    configuration is NOT managed locally by the SDK. Rather, the SDK sends
-//    commands to the sidecar, and awaits until those commands are applied.
 func main() {
-
-	// Delegate this run to the SDK. InvokeMap takes a map of test case names
-	// and test case functions, and dispatches accordingly depending on the test
-	// case being run. The run.Invoke* functions are entrypoint functions.
-	run.InvokeMap(testcases)
+	run.Invoke(runf)
 }
 
-// runPing is the test case logic.
-//
-// Its signature conforms to the SDK's run.InitializedTestCaseFn type. As a
-// result, the Testground SDK will perform a few useful preparation steps
-// for us:
-//
-//  1. Initializing a sync client, bound to this runenv. Refer to the main()
-//     docs for more info.
-//  2. Initializing a net client, using the above sync client. Refer to the
-//     main() docs for more info.
-//  3. Waiting for the network to initialize.
-//  4. Claiming a global sequence number, which uniquely identifies this instance within the run.
-//  5. Claiming a group-scoped sequence number, which uniquely identifies this instance within its group.
-func runPing(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
-	// 📝  Consume test parameters from the runtime environment.
+// Pick a different example function to run
+// depending on the name of the test case.
+func runf(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
+
 	var (
-		secureChannel = runenv.StringParam("secure_channel")
+//		secureChannel = runenv.StringParam("secure_channel")
 		maxLatencyMs  = runenv.IntParam("max_latency_ms")
 		iterations    = runenv.IntParam("iterations")
 	)
 
-	// We can record messages anytime; RecordMessage supports fmt-style
-	// formatting strings.
-	runenv.RecordMessage("started test instance; params: secure_channel=%s, max_latency_ms=%d, iterations=%d", secureChannel, maxLatencyMs, iterations)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	totalTime := time.Minute*10
+	ctx, cancel := context.WithTimeout(context.Background(), totalTime)
 	defer cancel()
-
-	// 🐣  Wait until all instances in this test run have signalled.
-	//
-	// This is API sugar for waiting until all runenv.TestInstanceCount signals
-	// have been made on state "initialized_global" (run.StateInitializedGlobal).
-	//
-	// By convention, Must* methods in the testground SDK will panic upon error.
-	//
-	// The sdk's run.Invoke* entrypoint functions catch these panics, record a
-	// CRASH event, and abort the test immediately.
 	initCtx.MustWaitAllInstancesInitialized(ctx)
 
-	// 🐥  Now all instances are ready for action.
-	//
-	// Note: In large test runs, the scheduler might take a few minutes to
-	// schedule all instances in a cluster.
-
-	// In containerised runs (local:docker, cluster:k8s runners), Testground
-	// instances get attached two networks:
-	//
-	//   * a data network
-	//   * a control network
-	//
-	// The data network is where standard test traffic flows. The control
-	// network connects us ONLY with the sync service, InfluxDB, etc. All
-	// traffic shaping rules are applied to the data network. Thanks to this
-	// separation, we can simulate disconnected scenarios by detaching the data
-	// network adapter, or blocking all incoming/outgoing traffic on that
-	// network.
-	//
-	// We need to listen on (and advertise) our data network IP address, so we
-	// obtain it from the NetClient.
 	ip := initCtx.NetClient.MustGetDataNetworkIP()
 
 	var security libp2p.Option
-	switch secureChannel {
-	case "noise":
-		security = libp2p.Security(noise.ID, noise.New)
-	case "tls":
-		security = libp2p.Security(tls.ID, tls.New)
-	}
+	security = libp2p.Security(noise.ID, noise.New)
 
 	// ☎️  Let's construct the libp2p node.
 	listenAddr := fmt.Sprintf("/ip4/%s/tcp/0", ip)
-	host, err := libp2p.New(ctx,
-		security,
-		libp2p.ListenAddrStrings(listenAddr),
+	host, err := libp2p.New(security,libp2p.ListenAddrStrings(listenAddr),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to instantiate libp2p instance: %w", err)
 	}
 
-	// 🚧  Now we instantiate the ping service.
-	//
-	// This adds a stream handler to our Host so it can process inbound pings,
-	// and the returned PingService instance allows us to perform outbound pings.
-	ping := ping.NewPingService(host)
-
-	// Record our listen addrs.
 	runenv.RecordMessage("my listen addrs: %v", host.Addrs())
+
+	ping := ping.NewPingService(host)
 
 	// Obtain our own address info, and use the sync service to publish it to a
 	// 'peersTopic' topic, where others will read from.
@@ -236,7 +154,6 @@ func runPing(runenv *runtime.RunEnv, initCtx *run.InitContext) error {
 	if err := pingPeers("initial"); err != nil {
 		return err
 	}
-
 	// 🕐  Wait for all peers to have finished the initial round.
 	initCtx.SyncClient.MustSignalAndWait(ctx, "initial", runenv.TestInstanceCount)
 
