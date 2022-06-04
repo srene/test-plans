@@ -1,4 +1,4 @@
-name = "ping"
+name = "datahop"
 [defaults]
 builder = "exec:go"
 runner = "local:exec"
@@ -29,7 +29,7 @@ instances = { min = 1, max = 1000, default = 2 }
   [testcases.params]
 #  secure_channel    = { type = "enum", desc = "secure channel used", values = ["noise", "tls"], default = "noise" }
   max_latency_ms    = { type = "int", desc = "maximum value for random local link latency", unit = "ms", default = 100 }
-  iterations        = { type = "int", desc = "number of ping iterations we'll run against each peer", unit = "count", default = 1 }
+  iterations        = { type = "int", desc = "number of ping iterations we'll run against each peer", unit = "count", default = 5 }
 
 # Add more testcases here...
 # [[testcases]]
